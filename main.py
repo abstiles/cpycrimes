@@ -10,66 +10,66 @@ from IPython import embed
 gl = 0
 
 
-def assigns_static(static_name):
-    def assigns_name(instruction):
-        if instruction.opname != 'STORE_FAST':
-            return False
-        if instruction.argval != static_name:
-            return False
-        return True
-    return assigns_name
+def get_cell(val=None):
+    '''Create a closure cell object with initial value.'''
+
+    # If you know a better way to do this, I'd like to hear it.
+    x = val
+    def closure():
+        return x
+    return closure.__closure__[0]
 
 
-def fetches_static(static_name):
-    def fetches_name(instruction):
-        if instruction.opname != 'LOAD_FAST':
-            return False
-        if instruction.argval != static_name:
-            return False
-        return True
-    return fetches_name
-
-
-def filtered_bytecode(f):
-    assigns_a = assigns_static('a')
-    fetches_a = fetches_static('a')
+def filtered_bytecode(f, added_freevars):
+    # I hate everything about this. Fix it.
     for instruction in Bytecode(f):
-        if assigns_a(instruction):
-            yield bytes([opmap['STORE_DEREF'], instruction.arg])
-        elif fetches_a(instruction):
-            yield bytes([opmap['LOAD_DEREF'], instruction.arg])
+        if instruction.argval in added_freevars:
+            if instruction.opname == 'LOAD_FAST':
+                yield bytes([opmap['LOAD_DEREF'], added_freevars[instruction.argval]])
+            elif instruction.opname == 'STORE_FAST':
+                yield bytes([opmap['STORE_DEREF'], added_freevars[instruction.argval]])
+            else:
+                yield bytes([instruction.opcode, instruction.arg or 0])
         else:
             yield bytes([instruction.opcode, instruction.arg or 0])
+    # TODO: Fix the LOAD/STORE FAST instructions for the other variables,
+    # which will need their indices adjusted to compensate for the removal of
+    # the free vars from their tuple.
 
 
-def fix_function(func):
+def fix_function(func, new_vars=()):
     fn_code = func.__code__
-    payload = b''.join(filtered_bytecode(func))
+    idx_map = freevar_index_map(fn_code, new_vars)
+    payload = b''.join(filtered_bytecode(func, idx_map))
+    new_locals = tuple(var for var in fn_code.co_varnames if var not in new_vars)
     return CodeType(fn_code.co_argcount,
                     fn_code.co_kwonlyargcount,
-                    fn_code.co_nlocals,
+                    len(new_locals),
                     fn_code.co_stacksize,
                     fn_code.co_flags & ~inspect.CO_NOFREE,
                     payload,
                     fn_code.co_consts,
                     fn_code.co_names,
-                    fn_code.co_varnames,
+                    new_locals,
                     fn_code.co_filename,
                     fn_code.co_name,
                     fn_code.co_firstlineno,
                     fn_code.co_lnotab,
-                    fn_code.co_freevars + ('a',),
+                    fn_code.co_freevars + tuple(new_vars),
                     fn_code.co_cellvars,)
 
 
-def static(a):
-    def closed():
-        nonlocal a
-        pass
+def freevar_index_map(fn_code, new_freevars):
+    first_idx = len(fn_code.co_freevars or ())
+    return {var: idx for (idx, var) in enumerate(new_freevars, first_idx)}
+
+
+def static(**vars):
+    closure = tuple(get_cell(v) for (k, v) in vars.items())
     def wrapper(f):
-        code = fix_function(f)
+        code = fix_function(f, tuple(vars.keys()))
         return FunctionType(code, f.__globals__, f.__name__, f.__defaults__,
-                            (f.__closure__ or ()) + closed.__closure__)
+                            (f.__closure__ or ()) + closure)
     return wrapper
 
 
@@ -83,7 +83,7 @@ def statics_manual():
     return inner
 
 
-@static(1)
+@static(a=1)
 def dynamic():
     print(a)
     a += 1
@@ -116,16 +116,6 @@ def diffdict(d1, d2):
         k: v for (k, v) in d2.items()
         if k not in d1 or d1[k] != v
     }
-
-
-def get_cell(val=None):
-    '''Create a closure cell object with initial value.'''
-
-    # If you know a better way to do this, I'd like to hear it.
-    x = val
-    def closure():
-        return x
-    return closure.__closure__[0]
 
 
 manual = statics_manual()
