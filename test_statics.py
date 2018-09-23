@@ -4,6 +4,7 @@ import inspect
 
 from statics import static
 
+
 def statics_manual():
     a = 0
     def inner():
@@ -78,3 +79,15 @@ def both_with_assignment(x, y):
 
 def test_free_and_local_with_assignment():
     assert both_with_assignment(1, 2) == ('hello', 'planet', 1, 2, 3)
+
+
+GLOBAL = 'some global'
+
+
+@static(a='hello')
+def with_global_override(local):
+    return a, GLOBAL, local
+
+
+def test_with_global_override():
+    assert with_global_override('test') == ('hello', 'some global', 'test')
