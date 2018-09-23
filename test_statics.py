@@ -67,3 +67,14 @@ def unifying(x, y):
 
 def test_free_and_local():
     assert unifying(1, 2) == ('hello', 'world', 1, 2)
+
+
+@static(a='hello', b='world')
+def both_with_assignment(x, y):
+    b = 'planet'
+    z = 3
+    return a, b, x, y, z
+
+
+def test_free_and_local_with_assignment():
+    assert both_with_assignment(1, 2) == ('hello', 'planet', 1, 2, 3)
