@@ -6,6 +6,17 @@ from dis import opmap, Bytecode
 from types import FunctionType, CodeType
 
 
+def static(**vars):
+    '''Decorator to inject static variables into a function.'''
+
+    closure = tuple(get_cell(v) for (k, v) in vars.items())
+    def wrapper(f):
+        code = inject_closure_vars(f, vars.keys())
+        return FunctionType(code, f.__globals__, f.__name__, f.__defaults__,
+                            (f.__closure__ or ()) + closure)
+    return wrapper
+
+
 def get_cell(val=None):
     '''Create a closure cell object with initial value.'''
 
@@ -14,6 +25,32 @@ def get_cell(val=None):
     def closure():
         return x  # pragma: no cover
     return closure.__closure__[0]
+
+
+def inject_closure_vars(func, new_vars=()):
+    '''Get the code for a closure of the new vars into the given function'''
+
+    fn_code = func.__code__
+    new_freevars = fn_code.co_freevars + tuple(new_vars)
+    new_globals = [var for var in fn_code.co_names if var not in new_vars]
+    new_locals = [var for var in fn_code.co_varnames if var not in new_vars]
+    payload = b''.join(
+        filtered_bytecode(func, new_freevars, new_globals, new_locals))
+    return CodeType(fn_code.co_argcount,
+                    fn_code.co_kwonlyargcount,
+                    len(new_locals),
+                    fn_code.co_stacksize,
+                    fn_code.co_flags & ~inspect.CO_NOFREE,
+                    payload,
+                    fn_code.co_consts,
+                    tuple(new_globals),
+                    tuple(new_locals),
+                    fn_code.co_filename,
+                    fn_code.co_name,
+                    fn_code.co_firstlineno,
+                    fn_code.co_lnotab,
+                    fn_code.co_freevars + tuple(new_vars),
+                    fn_code.co_cellvars,)
 
 
 def filtered_bytecode(func, freevars, globals, locals):
@@ -45,38 +82,3 @@ def filtered_bytecode(func, freevars, globals, locals):
         elif 'FAST' in instruction.opname:
             yield bytes([instruction.opcode,
                          locals_map[instruction.argval]])
-
-
-def inject_closure_vars(func, new_vars=()):
-    '''Get the code for a closure of the new vars into the given function'''
-
-    fn_code = func.__code__
-    new_freevars = fn_code.co_freevars + tuple(new_vars)
-    new_globals = [var for var in fn_code.co_names if var not in new_vars]
-    new_locals = [var for var in fn_code.co_varnames if var not in new_vars]
-    payload = b''.join(
-        filtered_bytecode(func, new_freevars, new_globals, new_locals))
-    return CodeType(fn_code.co_argcount,
-                    fn_code.co_kwonlyargcount,
-                    len(new_locals),
-                    fn_code.co_stacksize,
-                    fn_code.co_flags & ~inspect.CO_NOFREE,
-                    payload,
-                    fn_code.co_consts,
-                    tuple(new_globals),
-                    tuple(new_locals),
-                    fn_code.co_filename,
-                    fn_code.co_name,
-                    fn_code.co_firstlineno,
-                    fn_code.co_lnotab,
-                    fn_code.co_freevars + tuple(new_vars),
-                    fn_code.co_cellvars,)
-
-
-def static(**vars):
-    closure = tuple(get_cell(v) for (k, v) in vars.items())
-    def wrapper(f):
-        code = inject_closure_vars(f, vars.keys())
-        return FunctionType(code, f.__globals__, f.__name__, f.__defaults__,
-                            (f.__closure__ or ()) + closure)
-    return wrapper
