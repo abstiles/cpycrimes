@@ -12,7 +12,7 @@ def get_cell(val=None):
     # If you know a better way to do this, I'd like to hear it.
     x = val
     def closure():
-        return x
+        return x  # pragma: no cover
     return closure.__closure__[0]
 
 
