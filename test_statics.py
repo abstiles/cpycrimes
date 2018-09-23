@@ -53,3 +53,17 @@ def test_single_static():
     del diff['name']
     del diff['firstlineno']
     assert {'flags': diff['flags'] & ~inspect.CO_NESTED} == diff
+
+
+def test_incrementing():
+    assert dynamic() == 1
+    assert dynamic() == 2
+
+
+@static(a='hello', b='world')
+def unifying(x, y):
+    return a, b, x, y
+
+
+def test_free_and_local():
+    assert unifying(1, 2) == ('hello', 'world', 1, 2)
